@@ -95,13 +95,15 @@ A single background goroutine samples on a 1-second tick. It never touches UI st
 
 `witr`'s implementation lives entirely under `internal/` (`pipeline`, `proc`, `source`, `target`), and Go forbids importing another module's `internal` packages; its `pkg/` tree exposes types only. gogo-explorer therefore shells out to the `witr` binary, enforces a 30-second timeout, and parses its `--json` output — re-declaring only the fields the UI needs so that `witr`'s own dependency tree stays out of this module.
 
+Because it is only ever a subprocess, bundling it costs nothing structurally: the binary simply sits in `resources/` and is resolved from the install directory (see [witr.go](witr.go)) — no `go:embed`, and no unpacking to a temp directory at startup.
+
 ---
 
 ## Requirements
 
 - **Windows 10 or Windows 11** (x64). The app depends on Win32 APIs and will not build on other platforms.
 - **Go 1.27.1 or newer** (see [go.mod](go.mod)).
-- **The `witr` CLI on `PATH`** ([pranshuparmar/witr](https://github.com/pranshuparmar/witr), installable via `winget install PranshuParmar.witr`) — optional, but required for the "why is this running?" ancestry trace. Without it, the detail panel still shows process facts and reports that the trace could not be resolved.
+- **`witr` — bundled, nothing to install.** The "why is this running?" ancestry trace shells out to [witr](https://github.com/pranshuparmar/witr), which ships with the app as `resources/witr.exe`. `mygo build` copies everything in `resources/` next to the executable, so installed builds already have it in the install directory. Resolution order is: an explicit override, then `witr.exe` next to the executable, then `witr` on `PATH` (a `winget install PranshuParmar.witr` copy is still picked up for development runs). If all three miss, the detail panel still shows process facts and reports that the trace could not be resolved.
 
 ---
 
@@ -194,6 +196,6 @@ go tool mygo build              # 打包到 build/（配置见 mygo.json）
 go test ./...                   # 无头测试
 ```
 
-**环境要求**：Windows 10/11 x64、Go 1.27.1+；溯源功能需要 `witr` 在 `PATH` 中（可选）。
+**环境要求**：Windows 10/11 x64、Go 1.27.1+。溯源功能用的 `witr` 已随程序内置（`resources/witr.exe`，由 `mygo build` 复制到安装目录），无需单独安装；查找顺序为「显式覆盖 → 可执行文件同目录 → `PATH`」，开发机上 winget 装的那份仍然可用。
 
 **许可证**：MIT，作者 sugarbear。

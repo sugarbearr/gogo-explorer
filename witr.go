@@ -12,7 +12,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,8 +25,50 @@ import (
 // 因此除了下面的空目标保护，超时是第二道防线。
 const witrTimeout = 30 * time.Second
 
-// witrPath 覆盖 witr 可执行文件的位置；空则按 PATH 查找。
+// witrPath 覆盖 witr 可执行文件的位置；空则按内置副本、PATH 依次查找。
 var witrPath string
+
+// witrExeName 是内置副本的文件名。发行时 resources/witr.exe 由 mygo build
+// 复制到可执行文件旁边（Windows 上就是安装目录），因此这里按「同目录」查找，
+// 不需要 go:embed，也不需要运行时释放。
+const witrExeName = "witr.exe"
+
+// exeDir 覆盖「可执行文件所在目录」；仅测试用它指向构造出来的假安装目录。
+var exeDir string
+
+// witrInstallHint 是彻底找不到时给出的提示。
+const witrInstallHint = "找不到 witr：内置副本缺失且 PATH 上也没有。请重新安装本程序，或执行 winget install PranshuParmar.witr"
+
+// selfDir 返回当前可执行文件所在目录。测试可用 exeDir 覆盖。
+func selfDir() (string, error) {
+	if exeDir != "" {
+		return exeDir, nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	// os.Executable 可能返回符号链接路径，解析后再取目录，避免
+	// 在符号链接安装的场景下找不到旁边的 witr.exe。
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return filepath.Dir(exe), nil
+}
+
+// bundledWitr 返回安装目录里那份 witr.exe；不在则返回空串。
+func bundledWitr() string {
+	dir, err := selfDir()
+	if err != nil {
+		return ""
+	}
+	p := filepath.Join(dir, witrExeName)
+	fi, err := os.Stat(p)
+	if err != nil || fi.IsDir() {
+		return ""
+	}
+	return p
+}
 
 // witrTargetKind 是查询的类型。
 type witrTargetKind int
@@ -188,14 +232,24 @@ func firstLine(s string) string {
 	return strings.TrimSpace(strings.SplitN(s, "\n", 2)[0])
 }
 
-// findWitr 定位 witr 可执行文件。
+// findWitr 定位 witr 可执行文件，顺序为：
+//
+//  1. witrPath —— 显式覆盖（测试与排障用）
+//  2. 可执行文件同目录的 witr.exe —— 发行时随程序一起安装的内置副本
+//  3. PATH 上的 witr —— 开发机上 winget 装的那份
+//
+// 内置副本优先于 PATH，这样发行版用的一定是随包的那份，不会被用户机器上
+// 另一个（可能不兼容的）版本悄悄顶替；同时保留 PATH 回退，开发时无需拷贝副本。
 func findWitr() (string, error) {
 	if witrPath != "" {
 		return witrPath, nil
 	}
+	if p := bundledWitr(); p != "" {
+		return p, nil
+	}
 	p, err := exec.LookPath("witr")
 	if err != nil {
-		return "", errors.New("找不到 witr，请先安装：winget install PranshuParmar.witr")
+		return "", errors.New(witrInstallHint)
 	}
 	return p, nil
 }

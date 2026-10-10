@@ -16,3 +16,8 @@ Thumbs.db
 .agents/
 
 # NOTE: resources/icon.png is intentionally tracked.
+# The bundled witr.exe (resources/witr.exe) is ALSO intentionally tracked: mygo build
+# copies everything in resources/ next to the executable, which is how the app ships
+# its own witr instead of relying on the user's PATH. The blanket *.exe rule above
+# would silently drop it, so negate it explicitly.
+!resources/witr.exe

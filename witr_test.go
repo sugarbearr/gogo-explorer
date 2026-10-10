@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,81 @@ func witrInstalled(t *testing.T) string {
 		t.Skip("witr 未安装，跳过")
 	}
 	return p
+}
+
+// fakeWitrDir 造一个「安装目录」，里面按需放一个假 witr.exe，并把
+// exeDir/witrPath 切过去。返回清理函数。
+func fakeWitrDir(t *testing.T, withWitr bool) string {
+	t.Helper()
+	dir := t.TempDir()
+	if withWitr {
+		if err := os.WriteFile(filepath.Join(dir, witrExeName), []byte("stub"), 0o755); err != nil {
+			t.Fatalf("write stub witr: %v", err)
+		}
+	}
+	prevDir, prevPath := exeDir, witrPath
+	exeDir, witrPath = dir, ""
+	t.Cleanup(func() { exeDir, witrPath = prevDir, prevPath })
+	return dir
+}
+
+// TestFindWitrPrefersBundled 确认同目录的内置副本会被选中，而不是 PATH 上那份。
+// 这是本次改动的核心保证：发行版必须用随包安装的 witr。
+func TestFindWitrPrefersBundled(t *testing.T) {
+	dir := fakeWitrDir(t, true)
+	got, err := findWitr()
+	if err != nil {
+		t.Fatalf("findWitr: %v", err)
+	}
+	want := filepath.Join(dir, witrExeName)
+	if got != want {
+		t.Errorf("findWitr = %q, want the bundled copy %q", got, want)
+	}
+}
+
+// TestFindWitrFallsBackToPath 确认内置副本缺席时回退到 PATH。
+// 本机装了 witr 才有 PATH 可回退，否则只断言「没选中内置路径」。
+func TestFindWitrFallsBackToPath(t *testing.T) {
+	dir := fakeWitrDir(t, false)
+	got, err := findWitr()
+	if err != nil {
+		// 本机连 PATH 上也没有，这正是「彻底找不到」的路径，可接受。
+		if !strings.Contains(err.Error(), "找不到 witr") {
+			t.Errorf("err = %v, want 找不到 witr 提示", err)
+		}
+		return
+	}
+	if strings.HasPrefix(got, dir) {
+		t.Errorf("findWitr = %q, want a PATH result, not the (empty) install dir", got)
+	}
+}
+
+// TestFindWitrOverrideWins 确认 witrPath 覆盖优先于一切。
+func TestFindWitrOverrideWins(t *testing.T) {
+	dir := fakeWitrDir(t, true)
+	override := filepath.Join(dir, "somewhere-else.exe")
+	prev := witrPath
+	witrPath = override
+	t.Cleanup(func() { witrPath = prev })
+
+	got, err := findWitr()
+	if err != nil {
+		t.Fatalf("findWitr: %v", err)
+	}
+	if got != override {
+		t.Errorf("findWitr = %q, want the override %q", got, override)
+	}
+}
+
+// TestBundledWitrIgnoresDirectory 确认同目录下叫 witr.exe 的目录不会被误当成程序。
+func TestBundledWitrIgnoresDirectory(t *testing.T) {
+	dir := fakeWitrDir(t, false)
+	if err := os.Mkdir(filepath.Join(dir, witrExeName), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if got := bundledWitr(); got != "" {
+		t.Errorf("bundledWitr = %q, want empty for a directory", got)
+	}
 }
 
 // TestParseCandidates 覆盖退出码 4 的纯文本解析。这时 stdout 不是 JSON，

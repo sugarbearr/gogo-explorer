@@ -13,9 +13,9 @@
 1. **不能当 Go 库用。** witr 的逻辑全在 `internal/`（`pipeline`/`proc`/`source`/`target`），
    Go 禁止跨模块 import internal；`pkg/` 只有 `model`，且只有 struct 没有导出函数。
    → 只能以 **CLI 子进程** 调用。Apache-2.0，需要时也可内联改造。
-2. **witr 路径**：winget 装在
-   `%LocalAppData%\Microsoft\WinGet\Packages\PranshuParmar.witr_...\witr.exe`，
-   已在 PATH 里（`witr` 可直接调用）。版本 v0.3.3。
+2. **witr 路径**：~~winget 装在 …，已在 PATH 里~~ **已改为内置**（2026-10-10）：
+   `witr.exe` 放在 `resources/`，`mygo build` 会把它复制到可执行文件旁边（即安装目录），
+   运行时按「同目录 → PATH」查找。开发机上 winget 那份（v0.3.3）仍可作为回退。
 3. **延迟**：单次查询 215–345ms → 必须异步 + loading，不能阻塞 UI 线程。
 
 ## witr CLI 契约
