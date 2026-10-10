@@ -132,11 +132,38 @@ osuchile.exe`
 	}
 }
 
+// iconlessHosts 是「本来就不带图标资源」的系统宿主。
+//
+// 它们的覆盖率随机器角色剧烈变化：Windows 11 桌面大约 80% 的进程有图标，
+// 而 Server 镜像上系统宿主占绝对多数、桌面应用很少，实测只有 11%。
+// 用固定百分比当阈值等于在断言「这台机器像我的开发机」，
+// 所以先把这类宿主排除，再对剩下的进程要求一个高得多的下限。
+var iconlessHosts = map[string]bool{
+	"svchost.exe":               true,
+	"sihost.exe":                true,
+	"dwm.exe":                   true,
+	"csrss.exe":                 true,
+	"wininit.exe":               true,
+	"services.exe":              true,
+	"lsass.exe":                 true,
+	"fontdrvhost.exe":           true,
+	"smss.exe":                  true,
+	"winlogon.exe":              true,
+	"spoolsv.exe":               true,
+	"taskhostw.exe":             true,
+	"conhost.exe":               true,
+	"runtimebroker.exe":         true,
+	"searchhost.exe":            true,
+	"securityhealthservice.exe": true,
+}
+
 // TestIconCoverageAcrossProcesses 统计真实进程里有多少能取到图标。
 //
-// 实测基线：393 个能取到路径的进程里 313 个有图标，约 80%。
-// 其余是 svchost、sihost 这类本来就不带图标资源的系统宿主，
-// 所以这里只要求一个宽松的下限，用来抓住「提取整体失效」。
+// 基线（Windows 11 桌面）：393 个能取到路径的进程里 313 个有图标，约 80%。
+// 其余是 svchost、sihost 这类本来就不带图标资源的系统宿主。
+//
+// 排除这些宿主之后，剩余进程绝大多数都该有图标（Windows 11 桌面实测 84%）。
+// 阈值取 60%：既能抓「提取整体失效」（会掉到接近 0），又不受机器角色影响。
 func TestIconCoverageAcrossProcesses(t *testing.T) {
 	procs, err := listProcesses()
 	if err != nil {
@@ -145,6 +172,9 @@ func TestIconCoverageAcrossProcesses(t *testing.T) {
 	c := newIconCache()
 	tried, got := 0, 0
 	for _, p := range procs {
+		if iconlessHosts[strings.ToLower(p.Name)] {
+			continue
+		}
 		exe := processExePath(uint32(p.PID))
 		if exe == "" {
 			continue
@@ -154,12 +184,16 @@ func TestIconCoverageAcrossProcesses(t *testing.T) {
 			got++
 		}
 	}
-	if tried == 0 {
-		t.Skip("no process exe paths were resolvable")
+	// 样本太小说明这台机器上几乎只有系统宿主（例如 Server Core），
+	// 此时比例没有统计意义，跳过而不是误报。
+	if tried < 10 {
+		t.Skipf("only %d non-host processes with a resolvable path; too few to judge", tried)
 	}
-	t.Logf("icons: %d/%d processes with a resolvable path had an icon", got, tried)
-	if got*2 < tried {
-		t.Errorf("only %d of %d processes had an icon; extraction looks broken", got, tried)
+	t.Logf("icons: %d/%d non-host processes with a resolvable path had an icon", got, tried)
+	// 实测桌面约 84%，阈值取 60% 留足机器差异的余量；提取整体失效会
+	// 让比例掉到接近 0，仍然抓得住。
+	if got*10 < tried*6 {
+		t.Errorf("only %d of %d non-host processes had an icon; extraction looks broken", got, tried)
 	}
 }
 
