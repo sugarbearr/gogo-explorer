@@ -1,0 +1,6 @@
+{
+  "name": "mygo",
+  "identifier": "com.example.mygo",
+  "version": "0.1.0",
+  "out": "build"
+}

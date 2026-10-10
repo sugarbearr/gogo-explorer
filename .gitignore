@@ -1,0 +1,18 @@
+# Build output (mygo.json -> "out": "build")
+/build/
+# Local mygo dev state (hot-reload binaries, generated .syso, ...)
+/.mygo/
+*.exe
+
+# Generated Windows resource file
+mygo_windows_*.syso
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# AI assistant / agent tooling state (not part of the app)
+.workbuddy/
+.agents/
+
+# NOTE: resources/icon.png is intentionally tracked.
