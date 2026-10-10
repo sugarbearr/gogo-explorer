@@ -1,0 +1,90 @@
+name: Release
+
+# Push a tag like v0.1.0 to cut a release:
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to release (for example v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { throw "go test failed with exit code $LASTEXITCODE" }
+
+      - name: Build with the MyGo tool
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go tool mygo build
+          if ($LASTEXITCODE -ne 0) { throw "go tool mygo build failed with exit code $LASTEXITCODE" }
+
+      - name: Check the tag matches mygo.json
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $config = Get-Content mygo.json -Raw | ConvertFrom-Json
+          $expected = "v$($config.version)"
+          if ($env:RELEASE_TAG -ne $expected) {
+            throw "Tag '$env:RELEASE_TAG' does not match version '$($config.version)' in mygo.json (expected '$expected')."
+          }
+          Write-Host "Releasing $($config.name) $($config.version)"
+
+      - name: Publish release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'build/windows-amd64'
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          # Rename assets so the release page is readable in a browser.
+          Copy-Item "$dir/mygo.exe" "gogo-explorer-$version-windows-amd64.exe"
+          Copy-Item "$dir/mygo Setup $version.exe" "gogo-explorer-$version-setup.exe"
+          Copy-Item "$dir/witr.exe" "witr.exe"
+
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG `
+              "gogo-explorer-$version-windows-amd64.exe" `
+              "gogo-explorer-$version-setup.exe" `
+              "witr.exe" --clobber
+          } else {
+            gh release create $env:RELEASE_TAG `
+              "gogo-explorer-$version-windows-amd64.exe" `
+              "gogo-explorer-$version-setup.exe" `
+              "witr.exe" `
+              --title "gogo-explorer $env:RELEASE_TAG" `
+              --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Publishing release assets failed with exit code $LASTEXITCODE" }

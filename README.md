@@ -124,6 +124,21 @@ go build -o build\gogo-explorer.exe .
 
 The window can also be started by double-clicking the produced executable — it is a plain, self-contained Windows binary.
 
+### Continuous integration
+
+CI is defined in `.github/workflows/` and runs on `windows-latest` (the app is Win32-only):
+
+- **[ci.yml](.github/workflows/ci.yml)** runs on every push and pull request to `main`, plus manual dispatch. It verifies `go.mod`/`go.sum` are tidy, runs `go tool mygo vet .` and `CGO_ENABLED=0 go test ./...`, then builds with `go tool mygo build` and asserts the expected output (`mygo.exe`, `witr.exe`, and the installer) actually landed in `build/windows-amd64/`. Artifacts are uploaded for 14 days.
+- **[release.yml](.github/workflows/release.yml)** runs when a `v*` tag is pushed (or via manual dispatch with a tag input). It re-runs the tests, builds, checks the tag matches `version` in `mygo.json`, and publishes the executables plus the installer as GitHub Release assets.
+
+To cut a release, bump `version` in `mygo.json` first — the workflow rejects a tag that disagrees with it:
+
+```powershell
+# mygo.json version must already read 0.2.0
+git tag v0.2.0
+git push origin v0.2.0
+```
+
 ### Project configuration
 
 ```json

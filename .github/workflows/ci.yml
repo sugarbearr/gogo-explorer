@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# The app is Windows-only (Win32 APIs), so every job runs on windows-latest.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & vet
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify modules are tidy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          if ($LASTEXITCODE -ne 0) {
+            throw 'go.mod or go.sum is not tidy - run "go mod tidy" and commit the result.'
+          }
+
+      - name: Vet
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go tool mygo vet .
+          if ($LASTEXITCODE -ne 0) { throw "go tool mygo vet failed with exit code $LASTEXITCODE" }
+
+      - name: Test
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { throw "go test failed with exit code $LASTEXITCODE" }
+
+  build:
+    name: Build
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build with the MyGo tool
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go tool mygo build
+          if ($LASTEXITCODE -ne 0) { throw "go tool mygo build failed with exit code $LASTEXITCODE" }
+
+      - name: Verify the build output
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # mygo.json pins the output dir to "build"; the MyGo tool writes the
+          # executable, the installer and the bundled resources into
+          # build/windows-amd64/.
+          $dir = 'build/windows-amd64'
+          if (-not (Test-Path $dir)) {
+            throw "Expected build output directory '$dir' was not created."
+          }
+          Get-ChildItem $dir | Format-Table Name, Length
+
+          foreach ($name in @('mygo.exe', 'witr.exe')) {
+            if (-not (Test-Path (Join-Path $dir $name))) {
+              throw "'$name' is missing from $dir."
+            }
+          }
+          $setup = @(Get-ChildItem $dir -Filter 'mygo Setup *.exe')
+          if ($setup.Count -eq 0) {
+            throw "No 'mygo Setup *.exe' installer was produced in $dir."
+          }
+          Write-Host "Build verified: $($setup[0].Name)"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mygo-windows-amd64
+          path: build/windows-amd64/
+          if-no-files-found: error
+          retention-days: 14
