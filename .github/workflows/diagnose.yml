@@ -1,0 +1,24 @@
+name: Diagnose
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['diag_icon_inventory_test.go']
+
+jobs:
+  diag:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Dump icon inventory
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go test -count=1 -run TestDiagIconInventory -v . 2>&1 | Select-String -Pattern 'DIAG'
