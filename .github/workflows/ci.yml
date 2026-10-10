@@ -87,14 +87,16 @@ jobs:
           }
           Get-ChildItem $dir | Format-Table Name, Length
 
-          foreach ($name in @('mygo.exe', 'witr.exe')) {
-            if (-not (Test-Path (Join-Path $dir $name))) {
-              throw "'$name' is missing from $dir."
+          # The MyGo tool names its artifacts after "name" in mygo.json.
+          $appName = (Get-Content mygo.json -Raw | ConvertFrom-Json).name
+          foreach ($file in @("$appName.exe", 'witr.exe')) {
+            if (-not (Test-Path (Join-Path $dir $file))) {
+              throw "'$file' is missing from $dir."
             }
           }
-          $setup = @(Get-ChildItem $dir -Filter 'mygo Setup *.exe')
+          $setup = @(Get-ChildItem $dir -Filter "$appName Setup *.exe")
           if ($setup.Count -eq 0) {
-            throw "No 'mygo Setup *.exe' installer was produced in $dir."
+            throw "No '$appName Setup *.exe' installer was produced in $dir."
           }
           Write-Host "Build verified: $($setup[0].Name)"
 

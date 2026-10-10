@@ -67,11 +67,21 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = 'build/windows-amd64'
-          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          $config = Get-Content mygo.json -Raw | ConvertFrom-Json
+          $name = $config.name
+          $version = $config.version
+          # The MyGo tool names its artifacts after "name" in mygo.json, so read
+          # them from the config rather than hardcoding: the build emits
+          # <name>.exe and "<name> Setup <version>.exe".
+          $exe = Join-Path $dir "$name.exe"
+          $setup = Join-Path $dir "$name Setup $version.exe"
+          foreach ($f in @($exe, $setup, (Join-Path $dir 'witr.exe'))) {
+            if (-not (Test-Path $f)) { throw "expected build artifact '$f' is missing" }
+          }
           # Rename assets so the release page is readable in a browser.
-          Copy-Item "$dir/mygo.exe" "gogo-explorer-$version-windows-amd64.exe"
-          Copy-Item "$dir/mygo Setup $version.exe" "gogo-explorer-$version-setup.exe"
-          Copy-Item "$dir/witr.exe" "witr.exe"
+          Copy-Item $exe "gogo-explorer-$version-windows-amd64.exe"
+          Copy-Item $setup "gogo-explorer-$version-setup.exe"
+          Copy-Item (Join-Path $dir 'witr.exe') "witr.exe"
 
           gh release view $env:RELEASE_TAG *> $null
           if ($LASTEXITCODE -eq 0) {

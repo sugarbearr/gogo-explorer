@@ -1,6 +1,6 @@
 {
-  "name": "mygo",
-  "identifier": "com.example.mygo",
+  "name": "gogo-explorer",
+  "identifier": "com.sugarbearr.gogo-explorer",
   "version": "0.1.0",
   "out": "build"
 }
