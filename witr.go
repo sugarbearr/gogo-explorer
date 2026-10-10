@@ -18,7 +18,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // witrTimeout 限制单次查询。witr 不带目标时会等待标准输入而不返回，
@@ -279,6 +282,13 @@ func runWitr(target witrTarget, timeout time.Duration) (*witrResult, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	// 显式断开标准输入：即便 witr 想读也不会拿到任何东西。
 	cmd.Stdin = nil
+	// witr.exe 是控制台程序，而本程序是 GUI 程序：不隐藏的话，Windows
+	// 会为每次溯源新建一个黑色控制台窗口，跟着查询挂好几秒才消失。
+	// HideWindow 加 CREATE_NO_WINDOW 双保险，确保子进程完全无窗口。
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW,
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 
